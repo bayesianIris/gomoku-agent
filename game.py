@@ -1,0 +1,199 @@
+import numpy as np
+
+class GomokuCore:
+    def __init__(self, board_size=15):
+        self.board_size = board_size
+        # 0: 空, 1: 黑棋, 2: 白棋
+        self.board = np.zeros((board_size, board_size), dtype=int)
+        self.current_player = 1  # 黑棋先行
+        self.winner = None
+        self.game_over = False
+        self.last_move = None
+        # 活3活4解算存
+        self.l3_count = {1: 0, 2: 0}
+        self.l4_count = {1: 0, 2: 0}
+    def reset(self):
+        """重置游戏"""
+        self.board.fill(0)
+        self.current_player = 1
+        self.winner = None
+        self.game_over = False
+        self.last_move = None
+
+    def place_stone(self, row, col):
+        """
+        尝试落子
+        :return: (bool) 是否落子成功
+        """
+        if self.game_over:
+            return False
+        
+        # 检查边界和是否已有子
+        if not (0 <= row < self.board_size and 0 <= col < self.board_size):
+            return False
+        if self.board[row, col] != 0:
+            return False
+
+        # 执行落子
+        self.board[row, col] = self.current_player
+        self.last_move = (row, col)
+        
+        # 检查胜负
+        if self._check_win(row, col):
+            self.winner = self.current_player
+            self.game_over = True
+        else:
+            # 切换棋手 (1 -> 2, 2 -> 1)
+            self.current_player = 3 - self.current_player
+        return True
+    def _check_win(self, row, col):
+        """
+        基于最后落子的位置，判断是否获胜
+        只需检查四个方向：横、竖、主对角、副对角
+        """
+        directions = [(0, 1), (1, 0), (1, 1), (1, -1)] # (行增量, 列增量)
+        target = self.current_player
+        for dr, dc in directions:
+            count = 1
+            side = 0
+            # 正向检查
+            for i in range(1, 5):
+                r, c = row + dr * i, col + dc * i
+                # 超边界截断
+                if not (0 <= r < self.board_size and 0 <= c < self.board_size):
+                    break
+                # 检查是否是己方棋子
+                if self.board[r, c] == target: count += 1
+                # 检查活还是死
+                elif self.board[r, c] == 0: side += 1;break
+                # 碰到对方棋子肯定是死
+                else: break
+            # 反向检查
+            for i in range(1, 5):
+                r, c = row - dr * i, col - dc * i
+                if not (0 <= r < self.board_size and 0 <= c < self.board_size):
+                    break
+                # 检查是否是己方棋子
+                if self.board[r, c] == target: count += 1
+                # 检查活还是死
+                elif self.board[r, c] == 0: side += 1;break
+                # 碰到对方棋子肯定是死
+                else: break
+            if count >= 5:
+                return True
+            if count == 3 and side == 2:
+                self.l3_count[target] += 1
+            elif count == 4 and side >= 1:
+                self.l4_count[target] += 1
+        # 再算对手的
+        inits = [(0,1),(1,0),(1,1),(1,-1),(0,-1),(-1,0),(-1,-1),(-1,1)]
+        target = 3 - self.current_player
+        for dr, dc in inits:
+            # 对手棋起点
+            _r,_c = row + dr, col + dc
+            if not (0 <= _r < self.board_size and 0 <= _c < self.board_size):
+                continue
+            if self.board[_r, _c] == target:
+                # 发起单方向扫描,side给1假设我没落子
+                count = 1;side = 1
+                for i in range(1, 5):
+                    r, c = _r + dr * i, _c + dc * i
+                    if not (0 <= r < self.board_size and 0 <= c < self.board_size):
+                        break
+                    if self.board[r, c] == target: count += 1
+                    elif self.board[r, c] == 0: side += 1;break
+                    else: break
+                if count == 3 and side == 2:
+                    self.l3_count[target] -= 1
+                elif count == 4 and side >= 1:
+                    self.l4_count[target] -= 1
+                
+        return False
+    def simu_check(self, row, col):
+        bkup_l3 = self.l3_count.copy()
+        bkup_l4 = self.l4_count.copy()
+        try:
+            # 尝试执行模拟
+            win = self._check_win(row, col)
+            # 捕获想要返回的数据
+            res_l3 = self.l3_count.copy()
+            res_l4 = self.l4_count.copy()
+            return win, res_l3, res_l4
+        finally:
+            # 无论上面 return 了还是报错了，这里一定会执行
+            self.l3_count = bkup_l3
+            self.l4_count = bkup_l4
+            
+    def get_search_range(self, padding=2):
+        """
+        计算有子区域的 Bounding Box (边界框)，用于减少搜索范围
+        :param padding: 向外扩充的格子数 (通常为了检测周围的落子点)
+        :return: (row_min, row_max, col_min, col_max) 注意：max是切片用的，包含padding
+        """
+        row_has_stone = self.board.any(axis=1)
+        col_has_stone = self.board.any(axis=0)
+        # 如果棋盘是空的 (没有任何落子)，返回天元附近的范围
+        if not np.any(row_has_stone):
+            center = self.board_size // 2
+            return center-1, center+2, center-1, center+2
+        # 2. 获取有子行列的索引列表
+        row_indices = np.where(row_has_stone)[0]
+        col_indices = np.where(col_has_stone)[0]
+
+        # 3. 计算边界 (利用 numpy 数组的第一个和最后一个元素)
+        # 这里的 max 需要 +1 是因为 Python 切片是左闭右开区间 [start, end)
+        # 使用 clip 防止越界
+        row_min = np.clip(row_indices[0] - padding, 0, self.board_size)
+        row_max = np.clip(row_indices[-1] + padding + 1, 0, self.board_size)
+        
+        col_min = np.clip(col_indices[0] - padding, 0, self.board_size)
+        col_max = np.clip(col_indices[-1] + padding + 1, 0, self.board_size)
+
+        return row_min, row_max, col_min, col_max
+    def recommand_positions(self, padding=2):
+        """
+        返回候选落子点，按照离当前棋局重心距离从近到远排序
+        """
+        row_min, row_max, col_min, col_max = self.get_search_range(padding)
+        # 1. 获取搜索范围内的所有空位坐标 (局部坐标)
+        # 注意：这里切片是视图操作，非常快
+        sub_board = self.board[row_min:row_max, col_min:col_max]
+        empty_indices = np.argwhere(sub_board == 0)
+        
+        # 如果没有空位（极罕见情况），直接返回空列表
+        if len(empty_indices) == 0:
+            return []
+
+        # 2. 将局部坐标转换为全局坐标
+        # empty_indices 是 [[r1, c1], [r2, c2]...]
+        # 我们直接加上偏移量 (利用numpy广播机制)
+        candidates = empty_indices + [row_min, col_min]
+
+        # 3. 计算棋局的“重心” (Center of Gravity)
+        # 如果棋盘是空的，重心就是天元
+        # 这一步是为了让搜索更有启发性：优先搜棋子密集区域的中心
+        stone_indices = np.argwhere(self.board != 0)
+        if len(stone_indices) > 0:
+            # 计算所有棋子的平均坐标 (float)，这就是重心
+            center_r, center_c = np.mean(stone_indices, axis=0)
+        else:
+            center_r, center_c = self.board_size // 2, self.board_size // 2
+
+        # 4. 计算每个候选点到重心的距离 (使用距离的平方避免开根号，速度更快)
+        # candidates[:, 0] 是所有行坐标， candidates[:, 1] 是所有列坐标
+        # dist = (r - cr)^2 + (c - cc)^2
+        dists = (candidates[:, 0] - center_r)**2 + (candidates[:, 1] - center_c)**2
+
+        # 5. 根据距离排序
+        # argsort 返回的是排序后的索引
+        sorted_indices = np.argsort(dists)
+        
+        # 6. 利用排序索引重新排列 candidates，并转回 list of tuples
+        # 这一步是 NumPy 的高级索引，速度很快
+        sorted_candidates = candidates[sorted_indices]
+        
+        # 转换为 Python 原生 list (tuple格式)，方便后续遍历
+        return [tuple(pos) for pos in sorted_candidates]
+    def get_board(self):
+        """返回只读的numpy数组供显示层使用"""
+        return self.board
