@@ -160,11 +160,17 @@ class GomokuCore:
                 if not (0 <= next_r < self.board_size and 0 <= next_c < self.board_size):
                     continue
                 # 发起搜索@当前位置
+                if self.board[next_r, next_c] != target:
+                    continue
                 try:
-                    _,rec = self._my_search_side(target, next_r, next_c, dr, dc,simu=True)
+                    rec=rec2=(0,0)
                     self.board[row, col] = 0
                     _,rec2 = self._my_search_side(target, next_r, next_c, dr, dc,simu=True)
+                    if rec2==(0,0): continue
+                    self.board[row, col] = self.current_player
+                    _,rec = self._my_search_side(target, next_r, next_c, dr, dc,simu=True)
                 finally:
+                    # print("2step",rec,rec2)
                     self.board[row, col] = self.current_player
                     # debug
                     self.l3_count[target] += rec[0] - rec2[0]
@@ -172,10 +178,14 @@ class GomokuCore:
             elif self.board[_r, _c] == target:
                 # 发起搜索@当前位置
                 try:
-                    _,rec = self._my_search_side(target, next_r, next_c, dr, dc,simu=True)
+                    rec=rec2=(0,0)
                     self.board[row, col] = 0
-                    _,rec2 = self._my_search_side(target, next_r, next_c, dr, dc,simu=True)
+                    _,rec2 = self._my_search_side(target, _r, _c, dr, dc,simu=True)
+                    if rec2==(0,0): continue
+                    self.board[row, col] = self.current_player
+                    _,rec = self._my_search_side(target, _r, _c, dr, dc,simu=True)
                 finally:
+                    # print("1step",rec,rec2)
                     self.board[row, col] = self.current_player
                     # debug
                     self.l3_count[target] += rec[0] - rec2[0]
