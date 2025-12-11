@@ -46,121 +46,153 @@ class GomokuCore:
             # 切换棋手 (1 -> 2, 2 -> 1)
             self.current_player = 3 - self.current_player
         return True
+    def _my_search_side(self,target, row, col, dr, dc,simu=False):
+        count = 1
+        count_middle_blank = 0 # 记录中间空格数,中空零
+        count_edge_blocked_blank = 0 # 边堵零
+        side = 0  # 边不堵零
+        zero_flag = 0
+        count_hard = 1 # 硬连接
+        count_this_dir_middle_blank = 0
+        # 正向检查
+        for i in range(1, 7):
+            r, c = row + dr * i, col + dc * i
+            # 超边界截断
+            if not (0 <= r < self.board_size and 0 <= c < self.board_size):
+                if zero_flag == 1:
+                    count_edge_blocked_blank += 1
+                    zero_flag = 0
+                break
+            if zero_flag == 1:
+                zero_flag = 0
+                if self.board[r, c] == target:
+                    count_middle_blank += 1
+                    count_this_dir_middle_blank += 1
+                elif self.board[r, c] == 3-target:
+                    count_edge_blocked_blank += 1
+                    break
+                else:
+                    side += 1
+                    break
+            # 检查是否是己方棋子
+            if self.board[r, c] == target:
+                count += 1
+                if count_this_dir_middle_blank == 0:
+                    count_hard += 1
+            # 检查活还是死
+            elif self.board[r, c] == 0:
+                zero_flag = 1
+            # 碰到对方棋子肯定是死
+            else: break
+        # 反向检查
+        count_this_dir_middle_blank = 0 # 单方向中空零重置
+        for i in range(1, 7):
+            r, c = row - dr * i, col - dc * i
+            # 超边界截断
+            if not (0 <= r < self.board_size and 0 <= c < self.board_size):
+                if zero_flag == 1:
+                    count_edge_blocked_blank += 1
+                    zero_flag = 0
+                break
+            if zero_flag == 1:
+                zero_flag = 0
+                if self.board[r, c] == target:
+                    count_middle_blank += 1
+                    count_this_dir_middle_blank += 1
+                elif self.board[r, c] == 3-target:
+                    count_edge_blocked_blank += 1
+                    break
+                else:
+                    side += 1
+                    break
+            # 检查是否是己方棋子
+            if self.board[r, c] == target:
+                count += 1
+                if count_this_dir_middle_blank == 0:
+                    count_hard += 1
+            # 检查活还是死
+            elif self.board[r, c] == 0:
+                zero_flag = 1
+            # 碰到对方棋子肯定是死
+            else: break
+        record=[0,0]
+        # 对于三四的判断
+        if count_hard >= 5:
+            return True, record
+        if count == 3 and count_middle_blank <= 1:
+            if side == 2:
+                if not simu: self.l3_count[target] += 1
+                record[0]+=1
+            elif side == 1 and count_edge_blocked_blank == 1:
+                if not simu: self.l3_count[target] += 1
+                record[0]+=1
+            elif side == 0 and count_edge_blocked_blank == 2 and count_middle_blank == 1:
+                if not simu: self.l3_count[target] += 1
+                record[0]+=1
+        elif count == 4 and count_middle_blank <= 1:
+            if side + count_edge_blocked_blank >= 1:
+                if not simu: self.l4_count[target] += 1
+                record[1]+=1
+        return False, tuple(record)
     def _check_win(self, row, col):
         """
         基于最后落子的位置，判断是否获胜
         只需检查四个方向：横、竖、主对角、副对角
         """
-        directions = [(0, 1), (1, 0), (1, 1), (1, -1)] # (行增量, 列增量)
         target = self.current_player
-        # 活三： 0011100 2011100 011010 (2011102 211100 010112)
-        # # 0011102 -> 2011102 
+        directions = [(0, 1), (1, 0), (1, 1), (1, -1)]
         for dr, dc in directions:
-            count = 1
-            count_middle_blank = 0 # 记录中间空格数,中空零
-            count_edge_blocked_blank = 0 # 边堵零
-            side = 0  # 边不堵零
-            zero_flag = 0
-            count_hard = 0 # 硬连接
-            count_this_dir_middle_blank = 0
-            # 正向检查
-            for i in range(1, 7):
-                r, c = row + dr * i, col + dc * i
-                # 超边界截断
-                if not (0 <= r < self.board_size and 0 <= c < self.board_size):
-                    if zero_flag == 1:
-                        count_edge_blocked_blank += 1
-                        zero_flag = 0
-                    break
-                if zero_flag == 1:
-                    zero_flag = 0
-                    if self.board[r, c] == target:
-                        count_middle_blank += 1
-                        count_this_dir_middle_blank += 1
-                    elif self.board[r, c] == 3-target:
-                        count_edge_blocked_blank += 1
-                        break
-                    else:
-                        side += 1
-                        break
-                # 检查是否是己方棋子
-                if self.board[r, c] == target:
-                    count += 1
-                    if count_this_dir_middle_blank == 0:
-                        count_hard += 1
-                # 检查活还是死
-                elif self.board[r, c] == 0:
-                    zero_flag = 1
-                # 碰到对方棋子肯定是死
-                else: break
-            # 反向检查
-            count_this_dir_middle_blank = 0 # 单方向中空零重置
-            for i in range(1, 7):
-                r, c = row - dr * i, col - dc * i
-                # 超边界截断
-                if not (0 <= r < self.board_size and 0 <= c < self.board_size):
-                    if zero_flag == 1:
-                        count_edge_blocked_blank += 1
-                        zero_flag = 0
-                    break
-                if zero_flag == 1:
-                    zero_flag = 0
-                    if self.board[r, c] == target:
-                        count_middle_blank += 1
-                        count_this_dir_middle_blank += 1
-                    elif self.board[r, c] == 3-target:
-                        count_edge_blocked_blank += 1
-                        break
-                    else:
-                        side += 1
-                        break
-                # 检查是否是己方棋子
-                if self.board[r, c] == target:
-                    count += 1
-                    if count_this_dir_middle_blank == 0:
-                        count_hard += 1
-                # 检查活还是死
-                elif self.board[r, c] == 0:
-                    zero_flag = 1
-                # 碰到对方棋子肯定是死
-                else: break
-            
-            # 对于三四的判断
-            if count_hard >= 5:
-                return True
-            if count == 3 and count_middle_blank <= 1:
-                if side == 2:
-                    self.l3_count[target] += 1
-                elif side == 1 and count_edge_blocked_blank == 1:
-                    self.l3_count[target] += 1
-                elif side == 0 and count_edge_blocked_blank == 2 and count_middle_blank == 1:
-                    self.l3_count[target] += 1
-                
-            elif count == 4 and count_middle_blank <= 1:
-                if side + count_edge_blocked_blank >= 1:
-                    self.l4_count[target] += 1
+            win,_ = self._my_search_side(target, row, col, dr, dc)
+            if win: return True
+        # 活三： 2011100 2011100 011010 (2011102 211100 010112)
+        # # 0011102 -> 2011102 
         # 再算对手的
         inits = [(0,1),(1,0),(1,1),(1,-1),(0,-1),(-1,0),(-1,-1),(-1,1)]
         target = 3 - self.current_player
+        image_rec=[]
         for dr, dc in inits:
             # 对手棋起点
             _r,_c = row + dr, col + dc
             if not (0 <= _r < self.board_size and 0 <= _c < self.board_size):
                 continue
-            if self.board[_r, _c] == target:
-                # 发起单方向扫描,side给1假设我没落子
-                count = 1;side = 1
-                for i in range(1, 5):
-                    r, c = _r + dr * i, _c + dc * i
-                    if not (0 <= r < self.board_size and 0 <= c < self.board_size):
-                        break
-                    if self.board[r, c] == target: count += 1
-                    elif self.board[r, c] == 0: side += 1;break
-                    else: break
-                if count == 3 and side == 2:
-                    self.l3_count[target] -= 1
-                elif count == 4 and side >= 1:
-                    self.l4_count[target] -= 1
+            if self.board[_r, _c] != 0:
+                next_r, next_c = _r + dr, _c + dc
+                if not (0 <= next_r < self.board_size and 0 <= next_c < self.board_size):
+                    continue
+                # 发起搜索@当前位置
+                try:
+                    _,rec = self._my_search_side(target, next_r, next_c, dr, dc,simu=True)
+                    self.board[row, col] = 0
+                    _,rec2 = self._my_search_side(target, next_r, next_c, dr, dc,simu=True)
+                finally:
+                    self.board[row, col] = self.current_player
+                    # debug
+                    self.l3_count[target] += rec[0] - rec2[0]
+                    self.l4_count[target] += rec[1] - rec2[1]
+            elif self.board[_r, _c] == target:
+                # 发起搜索@当前位置
+                try:
+                    _,rec = self._my_search_side(target, next_r, next_c, dr, dc,simu=True)
+                    self.board[row, col] = 0
+                    _,rec2 = self._my_search_side(target, next_r, next_c, dr, dc,simu=True)
+                finally:
+                    self.board[row, col] = self.current_player
+                    # debug
+                    self.l3_count[target] += rec[0] - rec2[0]
+                    self.l4_count[target] += rec[1] - rec2[1]
+                # # 发起单方向扫描,side给1假设我没落子
+                # count = 1;side = 1
+                # for i in range(1, 5):
+                #     r, c = _r + dr * i, _c + dc * i
+                #     if not (0 <= r < self.board_size and 0 <= c < self.board_size):
+                #         break
+                #     if self.board[r, c] == target: count += 1
+                #     elif self.board[r, c] == 0: side += 1;break
+                #     else: break
+                # if count == 3 and side == 2:
+                #     self.l3_count[target] -= 1
+                # elif count == 4 and side >= 1:
+                #     self.l4_count[target] -= 1
                 
         return False
     def simu_check(self, row, col):
