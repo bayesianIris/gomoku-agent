@@ -12,6 +12,8 @@ class GomokuCore:
         # 活3活4解算存
         self.l3_count = {1: 0, 2: 0}
         self.l4_count = {1: 0, 2: 0}
+        self.l2_count = {1: 0, 2: 0}
+        self.rl4_count = {1: 0, 2: 0}
     def reset(self):
         """重置游戏"""
         self.board.fill(0)
@@ -115,7 +117,7 @@ class GomokuCore:
                 zero_flag = 1
             # 碰到对方棋子肯定是死
             else: break
-        record=[0,0]
+        record=[0,0,0,0]
         # 对于三四的判断
         if count_hard >= 5:
             return True, record
@@ -133,7 +135,16 @@ class GomokuCore:
             if side + count_edge_blocked_blank >= 1:
                 if not simu: self.l4_count[target] += 1
                 record[1]+=1
+        elif count == 4 and count_middle_blank == 0:
+            if side + count_edge_blocked_blank >= 1:
+                if not simu: self.rl4_count[target] += 1
+                record[3]+=1
+        elif count == 2 and count_middle_blank <= 1:
+            if side + count_edge_blocked_blank == 2:
+                if not simu: self.l2_count[target] += 1
+                record[2]+=1
         return False, tuple(record)
+    
     def _check_win(self, row, col):
         """
         基于最后落子的位置，判断是否获胜
@@ -142,83 +153,70 @@ class GomokuCore:
         target = self.current_player
         directions = [(0, 1), (1, 0), (1, 1), (1, -1)]
         for dr, dc in directions:
-            win,_ = self._my_search_side(target, row, col, dr, dc)
-            if win: return True
-        # 活三： 2011100 2011100 011010 (2011102 211100 010112)
-        # # 0011102 -> 2011102 
-        # 再算对手的
+            win, _ = self._my_search_side(target, row, col, dr, dc)
+            if win:
+                return True
+        # 活三、活四、活二、rl4 统计
         inits = [(0,1),(1,0),(1,1),(1,-1),(0,-1),(-1,0),(-1,-1),(-1,1)]
         target = 3 - self.current_player
-        image_rec=[]
         for dr, dc in inits:
-            # 对手棋起点
-            _r,_c = row + dr, col + dc
+            _r, _c = row + dr, col + dc
             if not (0 <= _r < self.board_size and 0 <= _c < self.board_size):
                 continue
             if self.board[_r, _c] != 0:
                 next_r, next_c = _r + dr, _c + dc
                 if not (0 <= next_r < self.board_size and 0 <= next_c < self.board_size):
                     continue
-                # 发起搜索@当前位置
                 if self.board[next_r, next_c] != target:
                     continue
                 try:
-                    rec=rec2=(0,0)
+                    rec = rec2 = (0, 0, 0, 0)
                     self.board[row, col] = 0
-                    _,rec2 = self._my_search_side(target, next_r, next_c, dr, dc,simu=True)
-                    if rec2==(0,0): continue
+                    _, rec2 = self._my_search_side(target, next_r, next_c, dr, dc, simu=True)
+                    if rec2 == (0, 0, 0, 0):
+                        continue
                     self.board[row, col] = self.current_player
-                    _,rec = self._my_search_side(target, next_r, next_c, dr, dc,simu=True)
+                    _, rec = self._my_search_side(target, next_r, next_c, dr, dc, simu=True)
                 finally:
-                    # print("2step",rec,rec2)
                     self.board[row, col] = self.current_player
-                    # debug
                     self.l3_count[target] += rec[0] - rec2[0]
                     self.l4_count[target] += rec[1] - rec2[1]
+                    self.l2_count[target] += rec[2] - rec2[2]
+                    self.rl4_count[target] += rec[3] - rec2[3]
             elif self.board[_r, _c] == target:
-                # 发起搜索@当前位置
                 try:
-                    rec=rec2=(0,0)
+                    rec = rec2 = (0, 0, 0, 0)
                     self.board[row, col] = 0
-                    _,rec2 = self._my_search_side(target, _r, _c, dr, dc,simu=True)
-                    if rec2==(0,0): continue
+                    _, rec2 = self._my_search_side(target, _r, _c, dr, dc, simu=True)
+                    if rec2 == (0, 0, 0, 0):
+                        continue
                     self.board[row, col] = self.current_player
-                    _,rec = self._my_search_side(target, _r, _c, dr, dc,simu=True)
+                    _, rec = self._my_search_side(target, _r, _c, dr, dc, simu=True)
                 finally:
-                    # print("1step",rec,rec2)
                     self.board[row, col] = self.current_player
-                    # debug
                     self.l3_count[target] += rec[0] - rec2[0]
                     self.l4_count[target] += rec[1] - rec2[1]
-                # # 发起单方向扫描,side给1假设我没落子
-                # count = 1;side = 1
-                # for i in range(1, 5):
-                #     r, c = _r + dr * i, _c + dc * i
-                #     if not (0 <= r < self.board_size and 0 <= c < self.board_size):
-                #         break
-                #     if self.board[r, c] == target: count += 1
-                #     elif self.board[r, c] == 0: side += 1;break
-                #     else: break
-                # if count == 3 and side == 2:
-                #     self.l3_count[target] -= 1
-                # elif count == 4 and side >= 1:
-                #     self.l4_count[target] -= 1
-                
+                    self.l2_count[target] += rec[2] - rec2[2]
+                    self.rl4_count[target] += rec[3] - rec2[3]
         return False
+
     def simu_check(self, row, col):
         bkup_l3 = self.l3_count.copy()
         bkup_l4 = self.l4_count.copy()
+        bkup_l2 = self.l2_count.copy()
+        bkup_rl4 = self.rl4_count.copy()
         try:
-            # 尝试执行模拟
             win = self._check_win(row, col)
-            # 捕获想要返回的数据
             res_l3 = self.l3_count.copy()
             res_l4 = self.l4_count.copy()
-            return win, res_l3, res_l4
+            res_l2 = self.l2_count.copy()
+            res_rl4 = self.rl4_count.copy()
+            return win, res_l3, res_l4, res_l2, res_rl4
         finally:
-            # 无论上面 return 了还是报错了，这里一定会执行
             self.l3_count = bkup_l3
             self.l4_count = bkup_l4
+            self.l2_count = bkup_l2
+            self.rl4_count = bkup_rl4
             
     def get_search_range(self, padding=2):
         """
